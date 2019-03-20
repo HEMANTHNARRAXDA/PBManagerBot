@@ -18,7 +18,7 @@ from tg_bot.modules import ALL_MODULES
 from tg_bot.modules.helper_funcs.chat_status import is_user_admin
 from tg_bot.modules.helper_funcs.misc import paginate_modules
 
-PM_START_TEXT = """Hi {}, my name is {}! If you have any questions on how to use me, read /help - and then head to @MarieSupport."""
+PM_START_TEXT = """Hi {}, my name is {}! If you have any questions on how to use me, read /help"""
 
 HELP_STRINGS = """
 Hey there! My name is *{}*.
@@ -29,7 +29,6 @@ the things I can help you with.
  - /start: start the bot
  - /help: PM's you this message.
  - /help <module name>: PM's you info about that module.
- - /donate: information about how to donate!
  - /settings:
    - in PM: will send you your settings for all supported modules.
    - in a group: will redirect you to pm, with all that chat's settings.
