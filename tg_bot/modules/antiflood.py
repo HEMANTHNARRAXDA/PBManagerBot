@@ -1,13 +1,14 @@
 import html
+import re
 from typing import Optional, List
 
-from telegram import Message, Chat, Update, Bot, User
+from telegram import Message, Chat, Update, Bot, User, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.error import BadRequest
-from telegram.ext import Filters, MessageHandler, CommandHandler, run_async
+from telegram.ext import Filters, MessageHandler, CommandHandler, CallbackQueryHandler, run_async
 from telegram.utils.helpers import mention_html
 
-from tg_bot import dispatcher
-from tg_bot.modules.helper_funcs.chat_status import is_user_admin, user_admin, can_restrict
+from tg_bot import dispatcher, WHITELIST_USERS, TIGER_USERS
+from tg_bot.modules.helper_funcs.chat_status import is_user_admin, user_admin, can_restrict, bot_admin, user_admin_no_reply, connection_status
 from tg_bot.modules.log_channel import loggable
 from tg_bot.modules.sql import antiflood_sql as sql
 
@@ -17,39 +18,56 @@ FLOOD_GROUP = 3
 @run_async
 @loggable
 def check_flood(bot: Bot, update: Update) -> str:
-    user = update.effective_user  # type: Optional[User]
-    chat = update.effective_chat  # type: Optional[Chat]
-    msg = update.effective_message  # type: Optional[Message]
+    user = update.effective_user
+    chat = update.effective_chat
+    msg = update.effective_message
+    log_message = ""
 
     if not user:  # ignore channels
-        return ""
+        return log_message
 
-    # ignore admins
-    if is_user_admin(chat, user.id):
+    # ignore admins and whitelists
+    if (is_user_admin(chat, user.id) 
+            or user.id in WHITELIST_USERS
+            or user.id in TIGER_USERS):
         sql.update_flood(chat.id, None)
-        return ""
+        return log_message
 
-    should_ban = sql.update_flood(chat.id, user.id)
-    if not should_ban:
+    should_mute = sql.update_flood(chat.id, user.id)
+    if not should_mute:
         return ""
 
     try:
-        chat.kick_member(user.id)
-        msg.reply_text("I like to leave the flooding to natural disasters. But you, you were just a "
-                       "disappointment. Get out.")
+        bot.restrict_chat_member(
+            chat.id,
+            user.id,
+            can_send_messages=False
+        )
+
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("Unmute", callback_data="unmute_flooder({})".format(user.id))]]
+        )
+        bot.send_message(chat.id,
+            f"{mention_html(user.id, user.first_name)} has been muted for flooding the group!",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
 
         return "<b>{}:</b>" \
-               "\n#BANNED" \
+               "\n#MUTED" \
                "\n<b>User:</b> {}" \
-               "\nFlooded the group.".format(html.escape(chat.title),
+               "\nFlooded the group.\nMuted until an admin unmutes".format(html.escape(chat.title),
                                              mention_html(user.id, user.first_name))
 
     except BadRequest:
-        msg.reply_text("I can't kick people here, give me permissions first! Until then, I'll disable antiflood.")
+        msg.reply_text("I can't mute people here, give me permissions first! Until then, I'll disable antiflood.")
         sql.set_flood(chat.id, 0)
-        return "<b>{}:</b>" \
-               "\n#INFO" \
-               "\nDon't have kick permissions, so automatically disabled antiflood.".format(chat.title)
+        log_message = ("<b>{chat.title}:</b>\n"
+                       "#INFO\n"
+                       "Don't have kick permissions, so automatically disabled antiflood.")
+
+        return log_message
 
 
 @run_async
